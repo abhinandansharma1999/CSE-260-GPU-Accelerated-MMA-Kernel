@@ -12,14 +12,14 @@
 #define TILESCALE_K 1 // Enter your own values
 #endif
 
-#define TILEDIM_M 1 // Enter your own values
-#define TILEDIM_N 1 // Enter your own values
+#define TILEDIM_M 32 // Enter your own values
+#define TILEDIM_N 32 // Enter your own values
 
 // matrix A loads
 // with warps along the horiziontal axis (K)
 // so to get good coalescaed loads, we want TILEDIM_K to be >= 32
 //
-#define TILEDIM_K 1 // Enter your own values
+#define TILEDIM_K 32 // Enter your own values
 
 // step size in each dimension
 #define TILESTEP_N 1 // Enter your own values
@@ -27,3 +27,4 @@
 #define TILESTEP_M 1 // Enter your own values
  
 #endif
+
