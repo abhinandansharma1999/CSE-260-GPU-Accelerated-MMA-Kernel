@@ -3,15 +3,6 @@ import numpy as np
 
 n = [256, 512, 1024, 1025, 2047, 2048]
 
-block64 = [
-    1619.533813,
-    3040.507445,
-    3640.449137,
-    3080.305968,
-    3700.344693,
-    3671.855508,
-]
-
 block32 = [
     1172.812403,
     1523.545205,
@@ -19,6 +10,15 @@ block32 = [
     1513.649790,
     1772.084763,
     1792.927926,
+]
+
+block16 = [
+    1619.533813,
+    3040.507445,
+    3640.449137,
+    3080.305968,
+    3700.344693,
+    3671.855508,
 ]
 
 block8 = [
@@ -32,7 +32,7 @@ block8 = [
 
 n = np.array(n, dtype=float)
 
-plt.plot(n, block64, marker="o", label="Block size 64")
+plt.plot(n, block16, marker="o", label="Block size 16")
 plt.plot(n, block32, marker="o", label="Block size 32")
 plt.plot(n, block8,  marker="o", label="Block size 8")
 
