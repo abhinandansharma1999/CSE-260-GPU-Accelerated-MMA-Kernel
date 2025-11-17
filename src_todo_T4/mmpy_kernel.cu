@@ -1,3 +1,4 @@
+// ;-*- mode: c;-*-
 // Matrix multiply device code
 #include <assert.h>
 #include <math.h>
@@ -24,54 +25,79 @@ __global__ void matMul(int N, _FTYPE_ *C, _FTYPE_ *A, _FTYPE_ *B) {
         C[I * N + J] = _c;
     }
 }
-
 #else
-// Optimized matrix multiply using tiling + shared memory
-__global__ void matMul(int N, _FTYPE_ *C, const _FTYPE_ *A, const _FTYPE_ *B) {
-
-    int tx = threadIdx.x;                     // thread column inside block
-    int ty = threadIdx.y;                     // thread row inside block
-
-    int row = blockIdx.y * TILEDIM_M + ty;    // global row in output C
-    int col = blockIdx.x * TILEDIM_N + tx;    // global column in output C
-
-    _FTYPE_ value = 0;                        // accumulator for C[row,col]
-
-    extern __shared__ _FTYPE_ ShmMem[];       // shared memory for tiles
-    _FTYPE_* As = ShmMem;                     // tile of A
-    _FTYPE_* Bs = ShmMem + (TILEDIM_M * TILEDIM_K);  // tile of B
-
-    // Loop over tiles along the K dimension
-    for (int kk = 0; kk < N; kk += TILEDIM_K) {
-
-        int aRow = row;                        // row of A to load
-        int aCol = kk + tx;                    // column of A to load
-        int aIndex = ty * TILEDIM_K + tx;      // index inside As
-
-        // Load one element of A into shared memory
-        As[aIndex] = (aRow < N && aCol < N) ? A[aRow * N + aCol] : 0;
-
-        int bRow = kk + ty;                    // row of B to load
-        int bCol = col;                        // column of B to load
-        int bIndex = ty * TILEDIM_N + tx;      // index inside Bs
-
-        // Load one element of B into shared memory
-        Bs[bIndex] = (bRow < N && bCol < N) ? B[bRow * N + bCol] : 0;
-
-        __syncthreads();                       // wait for full tile to load
-
-        // Multiply the tiles and accumulate partial result
+__global__ void matMul(int N, _FTYPE_ *C, _FTYPE_ *A, _FTYPE_ *B) {
+    // Allocate shared memory for tile caching
+    extern __shared__ _FTYPE_ shared_mem_pool[];
+    _FTYPE_ *tile_A = (_FTYPE_ (*))(&shared_mem_pool);
+    _FTYPE_ *tile_B = (_FTYPE_ (*))(&shared_mem_pool[TILEDIM_M * TILEDIM_K]);
+    
+    // Thread and block indices
+    int thread_x = threadIdx.x;  // 0-15
+    int thread_y = threadIdx.y;  // 0-15
+    int block_x = blockIdx.x;
+    int block_y = blockIdx.y;
+    
+    // Accumulator registers for 2x2 output block per thread
+    _FTYPE_ accum_row0_col0 = 0;
+    _FTYPE_ accum_row0_col1 = 0;
+    _FTYPE_ accum_row1_col0 = 0;
+    _FTYPE_ accum_row1_col1 = 0;
+    
+    // Calculate number of tiles to process along K dimension
+    int num_tiles = (N + TILEDIM_K - 1) / TILEDIM_K;
+    
+    for (int tile_idx = 0; tile_idx < num_tiles; tile_idx++) {
+        // Load A tile from global memory (32x32 tile, 4 elements per thread)
+        int global_A_col = tile_idx * TILEDIM_K + thread_x + (thread_y % 2) * 16;
+        int global_A_row = block_y * TILEDIM_M + thread_y / 2;
+        int shared_A_col = thread_x + (thread_y % 2) * 16;
+        int shared_A_row = thread_y / 2;
+       
+        tile_A[shared_A_row * TILEDIM_K + shared_A_col] = A[global_A_row * N + global_A_col];
+        tile_A[(shared_A_row + 8) * TILEDIM_K + shared_A_col] = A[(global_A_row + 8) * N + global_A_col];
+        tile_A[(shared_A_row + 16) * TILEDIM_K + shared_A_col] = A[(global_A_row + 16) * N + global_A_col];
+        tile_A[(shared_A_row + 24) * TILEDIM_K + shared_A_col] = A[(global_A_row + 24) * N + global_A_col];
+        
+        // Load B tile from global memory (32x32 tile, 4 elements per thread)
+        int global_B_col = block_x * TILEDIM_N + thread_x + (thread_y % 2) * 16;
+        int global_B_row = tile_idx * TILEDIM_K + thread_y / 2;
+        int shared_B_col = thread_x + (thread_y % 2) * 16;
+        int shared_B_row = thread_y / 2;
+       
+        tile_B[shared_B_row * TILEDIM_N + shared_B_col] = B[global_B_row * N + global_B_col];
+        tile_B[(shared_B_row + 8) * TILEDIM_N + shared_B_col] = B[(global_B_row + 8) * N + global_B_col];
+        tile_B[(shared_B_row + 16) * TILEDIM_N + shared_B_col] = B[(global_B_row + 16) * N + global_B_col];
+        tile_B[(shared_B_row + 24) * TILEDIM_N + shared_B_col] = B[(global_B_row + 24) * N + global_B_col];
+        
+        __syncthreads();
+        
+        // Compute partial dot products for 2x2 output block
         #pragma unroll
-        for (int k = 0; k < TILEDIM_K; k++) {
-            value += As[ty * TILEDIM_K + k] *
-                     Bs[k  * TILEDIM_N + tx];
+        for(int k = 0; k < TILEDIM_K; k++) {
+            _FTYPE_ a_val_row0 = tile_A[thread_y * TILEDIM_K + k];
+            _FTYPE_ a_val_row1 = tile_A[(thread_y + 16) * TILEDIM_K + k];
+            _FTYPE_ b_val_col0 = tile_B[k * TILEDIM_N + (2 * thread_x)];
+            _FTYPE_ b_val_col1 = tile_B[k * TILEDIM_N + (2 * thread_x + 1)];
+           
+            accum_row0_col0 += a_val_row0 * b_val_col0;
+            accum_row0_col1 += a_val_row0 * b_val_col1;
+            accum_row1_col0 += a_val_row1 * b_val_col0;
+            accum_row1_col1 += a_val_row1 * b_val_col1;
         }
-
-        __syncthreads();                       // wait before loading next tile
+        
+        __syncthreads();
     }
-
-    // Write final output value
-    if (row < N && col < N)
-        C[row * N + col] = value;
+    
+    // Write 2x2 output block to global memory
+    int output_row0 = block_y * TILEDIM_M + thread_y;
+    int output_row1 = block_y * TILEDIM_M + thread_y + 16;
+    int output_col0 = block_x * TILEDIM_N + 2 * thread_x;
+    int output_col1 = block_x * TILEDIM_N + 2 * thread_x + 1;
+   
+    C[output_row0 * N + output_col0] = accum_row0_col0;
+    C[output_row0 * N + output_col1] = accum_row0_col1;
+    C[output_row1 * N + output_col0] = accum_row1_col0;
+    C[output_row1 * N + output_col1] = accum_row1_col1;
 }
 #endif
