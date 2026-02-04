@@ -1,4 +1,4 @@
-# Matrix Multiplication with CUDA
+# Matrix Multiplication with CUDA - Completed
 Starter code for CSE260 HW2.
 
 You will only need to edit files in src_todo folder.

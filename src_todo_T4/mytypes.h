@@ -3,13 +3,13 @@
 
 // tilescale (# of points computed by each thread)
 #ifndef TILESCALE_M
-#define TILESCALE_M 4 // Enter your own values
+#define TILESCALE_M 8 // Enter your own values
 #endif
 #ifndef TILESCALE_N
-#define TILESCALE_N 4 // Enter your own values
+#define TILESCALE_N 8 // Enter your own values
 #endif
 #ifndef TILESCALE_K
-#define TILESCALE_K 4 // Enter your own values
+#define TILESCALE_K 8 // Enter your own values
 #endif
 
 #define TILEDIM_M 64 // Enter your own values
@@ -22,9 +22,9 @@
 #define TILEDIM_K 64 // Enter your own values
 
 // step size in each dimension
-#define TILESTEP_N 16 // Enter your own values
-#define TILESTEP_K 16 // Enter your own values
-#define TILESTEP_M 16 // Enter your own values
+#define TILESTEP_N 8 // Enter your own values
+#define TILESTEP_K 8 // Enter your own values
+#define TILESTEP_M 8 // Enter your own values
  
 #endif
 
